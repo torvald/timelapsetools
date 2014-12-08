@@ -5,7 +5,7 @@ function show_help {
 }
 
 function verbose {
-    if [[ "$VERBOSE" ]]; then
+    if [[ "$VERBOSE" == "1" ]]; then
         echo $@
     fi
 }
@@ -14,6 +14,7 @@ function verbose {
 OPTIND=1         # Reset in case getopts has been used previously in the shell.
 
 # Initialize our own variables:
+CORES=4
 OUTPUT_FILE="output"
 VERBOSE=0
 Y=0
@@ -89,14 +90,32 @@ if (( $MORPH > 0 )); then
             continue
         else
             verbose "Morfing $prevfile with $file"
-            convert "$SOURCEFOLDER/$prevfile" "$SOURCEFOLDER/$file" -quality 70 -morph $MORPH "$MORPHFOLDER/${prevfile}_%05d.jpg"
+            convert "$SOURCEFOLDER/$prevfile" "$SOURCEFOLDER/$file" -quality 70\
+                -morph $MORPH "$MORPHFOLDER/${prevfile}_%05d.jpg"
             prevfile=$file  
         fi  
     done
+    find $MORPHFOLDER | grep "00000.jpg" | xargs rm # as 0000 and 000<$MORPH> in next serie are equal
+    verbose "Morfingfolder is new sourcefolder"
+    SOURCEFOLDER=$MORPHFOLDER
 fi
 
+# gather names on files to be included in timelapse and sort by date and clock
+FRAMESFILE="/tmp/framesfiletimelapse.txt"
+rm $FRAMESFILE &> /dev/null
+for file in $(ls -1 $SOURCEFOLDER | sort); do
+    echo $SOURCEFOLDER$file >> $FRAMESFILE
+done
+
+verbose "Running mencoder, generationg $OUTPUT_FILE"
+mencoder -ovc lavc -oac lavc -of lavf -lavfopts format=webm \
+     -lavcopts threads=$CORES:vcodec=libvpx \
+     -vf scale=$RESOLUTION -mf fps=$FPS \
+     -ffourcc VP80 mf://@"$FRAMESFILE" -o $OUTPUT_FILE &>/dev/null
 
 
-
-
+# cleaning up
+verbose "Cleaning up"
+rm $FRAMESFILE
+rm -r $MORPHFOLDER
 
